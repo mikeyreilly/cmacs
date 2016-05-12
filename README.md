@@ -43,6 +43,6 @@ TODO
 
 ## Copyright and License
 
-Copyright © 2016 TODO_INSERT_NAME
+Copyright © 2016 Michael Reilly
 
 TODO: [Choose a license](http://choosealicense.com/)
