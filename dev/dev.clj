@@ -40,7 +40,6 @@
 (defn go
   "Initializes and starts the system running."
   []
-  (println "go!")
   (alter-var-root #'system
                   (constantly (system/start)))
   :ready)

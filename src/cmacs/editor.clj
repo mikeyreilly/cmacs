@@ -97,11 +97,11 @@
                  :buffer)
         lines (->> buf
                    :lines
-                   (str/join \newline))
-        answer (.substring lines (-> buf :prompt .length))]
-    ;need to close minibuffer
-    (put! (:answers ed) answer))
-  ed)
+                   (str/join \newline))]
+    (let [answer (.substring lines (-> buf :prompt .length))]
+      ;need to close minibuffer
+      (put! (:answers ed) answer))
+    ed))
 
 
 

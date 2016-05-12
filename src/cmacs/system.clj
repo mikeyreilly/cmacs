@@ -9,7 +9,6 @@
 
 (def all-bindings-for-mode
   (fn [editor mode]
-    (println "mode=" mode)
     (loop [m mode acc (:key-bindings mode)]
       (let [p-key (:parent m)]
         (if (nil? p-key)
@@ -18,8 +17,6 @@
             (recur p-mode (merge
                        (:key-bindings p-mode)
                        acc))))))))
-
-
 
 
 (defn create-editor-frame[editor-atom window-index]
@@ -63,8 +60,7 @@
   (update ed :modes assoc
           :fundamental
           {:key-bindings
-           {(k/kbd "C-x C-f")    [#'cmacs.editor/find-file]; "/Users/mikey/c/cmacs/src/cmacs/keyboard.clj"],
-            (k/kbd "M-SLASH")    [#'read-from-minibuffer "prompt?" "default-value"],
+           {(k/kbd "C-x C-f")    [#'cmacs.editor/find-file]
             (k/kbd "ENTER")      [#'cmacs.editor/new-line],
             (k/kbd "LEFT")       [#'cmacs.editor/right -1],
             (k/kbd "C-o")        [#'cmacs.editor/find-file "/Users/mikey/c/cmacs/src/cmacs/editor.clj"],
@@ -93,18 +89,19 @@
         init-keybindings)))
 
 
-(defn start[]
+(defn start
+  "Creates an Editor atom and java.awt.Frames for each of its windows"
+  []
   (let [ed (atom (create-editor))
         frames  (vec (for [i (range (count (:windows @ed)))]
                        (create-editor-frame ed i)))]
-    (println "windows=" (:windows @ed))
-    (println "frames=" frames)
     {:ed ed
      :frames frames}
     ))
 
-(defn stop[system]
+(defn stop
+  "Disposes of all java.awt.Frames"
+  [system]
   (doseq [f (:frames system)]
     (.dispose f)
     ))
-

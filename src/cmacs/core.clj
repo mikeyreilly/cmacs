@@ -39,7 +39,7 @@
            lines []}}]
   (View. col line width-ch
          height-ch v-scroll h-scroll font
-         char-width char-height false buffer))
+         char-width char-height 0 buffer))
 
 (defrecord Panel[x y width-px height-px contents right])
 
@@ -54,15 +54,15 @@
             :contents  panel))
 
 (defn panel-views[panel]
-  (map :contents (filter (fn[v](instance? View (:contents v))) (panel-seq panel))))
+  (map :contents (filter
+                  (fn[v](instance? View (:contents v))) (panel-seq panel))))
 
 (defn views[editor]
   (mapcat panel-views (:windows editor)))
 
 (defn active[views]
-  (let [active (filter :active views)
-        f (first active)]
-    (if f f (first views))))
+  (let [active (apply max-key :active views)]
+    (if active active (first views))))
 
 (defn active-window[editor]
   (active (:windows editor)))
@@ -75,27 +75,27 @@
     (if (= window old-active)
       editor
       (w/postwalk-replace
-        {old-active (assoc old-active :active nil)
-         window (assoc window :active true)}
+        {window (assoc window :active ((fnil inc 0) (:active old-active)))}
         editor))))
 
 (defn window-of[editor view]
   ((comp :window first)
    (filter #(contains? (:panels %) view)
-           (map (fn[x] {:window x :panels (set (panel-views x))}) (:windows editor)))))
-
+           (map
+            (fn[x] {:window x :panels (set (panel-views x))})
+            (:windows editor)))))
 
 (defn set-active-view
-  "makes the specified view the only active view in the window which contains it"
+  "makes the specified view the only active
+  view in the window which contains it"
   [editor view]
   {:pre [(and (instance? Editor editor)
               (instance? View view))]}
   (let [old-active (active (panel-views (window-of editor view)))]
     (if old-active
       (w/postwalk-replace
-        {old-active (assoc old-active :active nil)
-         view (assoc view :active true)}
-        editor)
+       {view (assoc view :active ((fnil inc 0) (:active old-active)))}
+       editor)
       (throw (IllegalArgumentException. "old-active is nil")))))
 
 (defn lines[view]
@@ -137,18 +137,19 @@
     (let [view x]
       (let [[width-ch height-ch v-scroll h-scroll col line]
             ((juxt
-               :width-ch :height-ch :v-scroll
-               :h-scroll :col :line) view)]
+              :width-ch :height-ch :v-scroll
+              :h-scroll :col :line) view)]
         (let [view (cond (< line v-scroll)
                          (assoc view :v-scroll line)
                          (> line (+ v-scroll height-ch -1))
                          (assoc view :v-scroll
-                           (max 0 (- line height-ch -1)))
+                                (max 0 (- line height-ch -1)))
                          :else view)]
           (cond
             (< col h-scroll) (assoc view :h-scroll col)
-            (> col  (+ h-scroll width-ch -1)) (assoc view
-                                                :h-scroll (max 0 (- col width-ch -1)))
+            (> col  (+ h-scroll width-ch -1))
+            (assoc view
+                   :h-scroll (max 0 (- col width-ch -1)))
             :else view))))))
 
 
@@ -181,7 +182,6 @@
 
 (defn action->fn[action-def missing]
   (let [[action-var & action-parameters] action-def]
-    (prn [action-var  action-parameters])
     (let [action-parameters (concat action-parameters missing)
           action (var-get action-var)
           action (if (:editor (meta action-var))
@@ -199,7 +199,6 @@
                                     :buffer
                                     :mode)))
   ([ed ks mode]
-   (prn ";;;" [ks mode])
    (let [r (get-in ed [:modes mode :key-bindings ks])]
      (if r r (if-let [parent (get-in ed [:modes mode :parent])]
                (recur ed ks parent)
@@ -241,7 +240,8 @@
         editor (add-buffer :prompt prompt :name "minibuffer" :lines [prompt] :editor editor :mode :minibuffer)
         buf (add-text-properties (peek (:buffers editor)) [0 0] [0 (.length prompt)] :read-only)
         was-active (active-window editor)
-        new-window (do-layout-panel (make-panel [was-active (make-panel (make-view :col (inc (.length prompt)) :buffer buf))])
+        new-window (do-layout-panel (make-panel [was-active
+                                                 (make-panel (make-view :col (inc (.length prompt)) :buffer buf))])
                                     (:x was-active)
                                     (:y was-active)
                                     (:width-px was-active)
@@ -263,17 +263,13 @@
 
 ;need to check if action we're looking up needs to ask for params
 (defn handle-key[editor-atom frame k]
-  (prn "k=" k)
+  (prn "k" k)
   (if (char? k)
     (do
       (swap! editor-atom #(scroll (update-view % insert-char k)))
       (.repaint frame)
       )
     (let [action-def (lookup-action @editor-atom k)]
-      (prn "action-def)" action-def)
-      (prn  "mp)"(missing-params action-def))
-
-
       (when action-def
         (future
           (try
@@ -284,8 +280,7 @@
                                             (ask p editor-atom frame))))))
 
             (.repaint frame)
-            (catch Exception ex (.printStackTrace ex))
-            ))))))
+            (catch Exception ex (.printStackTrace ex))))))))
 
 (defn make-key-listener
   "if part of a key sequence is typed wait until whole
@@ -307,24 +302,29 @@
         done (fn[](and (pos? (count @key-sequence))(not (matches @key-sequence (key-sequences)))))]
     (reify KeyListener
       (keyPressed [this e]
-                  (prn "ks ret" (key-sequences))
+                  (prn "e")
                   (when-not (is-modifier? e)
                     (swap! key-sequence conj (k/KeyEvent->KeyStroke e))
                     (when ((key-sequences) @key-sequence)
-                      (f @key-sequence)
-                      (reset! key-sequence []))))
+                      (let [old-ks @key-sequence]
+                        (reset! key-sequence [])
+                        (f old-ks)))))
 
       (keyTyped [this e]
+                (prn "e")
                 (when (done)
-                  (f (if (= (count @key-sequence) 1)
-                       (.getKeyChar e)
-                       @key-sequence))
-                  (reset! key-sequence [])))
+                  (let [old-ks @key-sequence]
+                    (reset! key-sequence [])
+                    (f (if (= (count old-ks) 1)
+                         (.getKeyChar e)
+                         old-ks)))))
 
       (keyReleased [this e]
+                   (prn "e")
                    (when (done)
-                     (f @key-sequence)
-                     (reset! key-sequence []))))))
+                     (let [old-ks @key-sequence]
+                       (reset! key-sequence [])
+                       (f old-ks)))))))
 
 
 (defn pixel-position[view col line]
@@ -357,8 +357,3 @@
                   (:y panel) (:width-px panel) (:height-px panel))
       (doseq [i (range (count contents)) ]
         (paint-panel (contents i) g)))))
-
-
-
-
-
